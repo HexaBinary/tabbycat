@@ -3,12 +3,10 @@ name: Django CI
 on:
   push:
     branches:
-    - '**'
-    - '!l10n_develop'
+    - 'develop'
   pull_request:
     branches:
-    - '**'
-    - '!l10n_develop'
+    - 'develop'
 
 jobs:
   build-ubuntu:
