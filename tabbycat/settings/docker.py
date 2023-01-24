@@ -7,7 +7,14 @@ import os
 ALLOWED_HOSTS = ["*"]
 
 DATABASES = {
-    "default": dj_database_url.parse(os.getenv("DATABASE_URL")),
+    "default": {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'db_tabbyprod',
+        'USER': 'tabbyprod',
+        'PASSWORD': 'AVNS_Ba1J5-TYnA_E0vLeg8q',
+        'HOST': 'private-vmundb-do-user-12885332-0.b.db.ondigitalocean.com',
+        'PORT': '25060',
+    }
 }
 
 SERVER_EMAIL = os.getenv('DEFAULT_FROM_EMAIL')
