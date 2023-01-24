@@ -326,7 +326,7 @@ class AssistantDrawDisplayForCurrentRoundsByTeamView(OptionalAssistantTournament
 # Draw Alerts Utilities (Admin)
 # ==============================================================================
 
-class AdminDrawUtiltiesMixin:
+class AdminDrawUtilitiesMixin:
     """Shared between the admin draw and admin display pages."""
 
     def get_draw(self):
@@ -365,7 +365,7 @@ class AdminDrawUtiltiesMixin:
 # Draw Display Index (Admin)
 # ==============================================================================
 
-class BaseDrawDisplayIndexView(AdminDrawUtiltiesMixin, RoundMixin, TemplateView):
+class BaseDrawDisplayIndexView(AdminDrawUtilitiesMixin, RoundMixin, TemplateView):
     pass
 
 
@@ -381,7 +381,7 @@ class AssistantDrawDisplayView(CurrentRoundMixin, OptionalAssistantTournamentPag
 class EmailAdjudicatorAssignmentsView(RoundTemplateEmailCreateView):
     page_subtitle = _("Adjudicator Assignments")
 
-    event = BulkNotification.EVENT_TYPE_ADJ_DRAW
+    event = BulkNotification.EventType.ADJ_DRAW
     subject_template = 'adj_email_subject'
     message_template = 'adj_email_message'
 
@@ -423,7 +423,7 @@ class EmailAdjudicatorAssignmentsView(RoundTemplateEmailCreateView):
 class EmailTeamAssignmentsView(RoundTemplateEmailCreateView):
     page_subtitle = _("Team Pairings")
 
-    event = BulkNotification.EVENT_TYPE_TEAM_DRAW
+    event = BulkNotification.EventType.TEAM_DRAW
     subject_template = 'team_draw_email_subject'
     message_template = 'team_draw_email_message'
 
@@ -437,7 +437,7 @@ class EmailTeamAssignmentsView(RoundTemplateEmailCreateView):
 # Draw Creation (Admin)
 # ==============================================================================
 
-class AdminDrawView(RoundMixin, AdministratorMixin, AdminDrawUtiltiesMixin, VueTableTemplateView):
+class AdminDrawView(RoundMixin, AdministratorMixin, AdminDrawUtilitiesMixin, VueTableTemplateView):
     detailed = False
 
     def get_page_title(self):

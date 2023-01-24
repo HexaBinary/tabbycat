@@ -15,7 +15,7 @@ export default {
     return { bridges: {}, lostConnections: 0, componentId: Math.floor(Math.random() * 10000) }
   },
   created: function () {
-    // Check if this is being run over HTTP(S); match the WS(S) procol
+    // Check if this is being run over HTTP(S); match the WS(S) protocol
     const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const path = `${scheme}://${window.location.host}/ws/`
     // Construct path
@@ -56,7 +56,7 @@ export default {
         self.showLostConnectionAlert()
       }).bind(socketPath, self))
 
-      // Set the data to contain the socket bridge so we can send to it
+      // Set the data to contain the socket bridge so that we can send to it
       self.$set(self.bridges, socketLabel, webSocketBridge)
     }
   },
@@ -106,7 +106,7 @@ export default {
     },
     dismissLostConnectionAlert: function () {
       if (this.lostConnections > 1) { // Only show modal when a connection is re-opened not opened
-        const explanation = `This page lost its connection to the server but has succesfully reopened
+        const explanation = `This page lost its connection to the server but has successfully reopened
                            it. Changes made to data on this page will now be saved. However, you may
                            want to refresh the page to verify that earlier changes were saved.`
         this.showErrorAlert(explanation, null, 'Connection Resumed', 'text-success', true, true)

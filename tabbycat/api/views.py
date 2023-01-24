@@ -1,3 +1,4 @@
+from copy import deepcopy
 from itertools import groupby
 
 from asgiref.sync import async_to_sync
@@ -25,9 +26,10 @@ from breakqual.views import GenerateBreakMixin
 from checkins.consumers import CheckInEventConsumer
 from checkins.models import Event
 from checkins.utils import create_identifiers, get_unexpired_checkins
-from draw.models import Debate
+from draw.models import Debate, DebateTeam
 from options.models import TournamentPreferenceModel
 from participants.models import Adjudicator, Institution, Speaker, SpeakerCategory, Team
+from results.models import SpeakerScore, TeamScore
 from standings.speakers import SpeakerStandingsGenerator
 from standings.teams import TeamStandingsGenerator
 from tournaments.mixins import TournamentFromUrlMixin
@@ -63,6 +65,7 @@ class APIRootView(PublicAPIMixin, GenericAPIView):
             "_links": {
                 "v1": reverse('api-v1-root', request=request, format=format),
             },
+            "timezone": settings.TIME_ZONE,
             "version": settings.TABBYCAT_VERSION,
         })
 
@@ -659,6 +662,78 @@ class TeamStandingsView(BaseStandingsView):
     generator = TeamStandingsGenerator
 
 
+@extend_schema(tags=['standings'], parameters=[
+    tournament_parameter,
+    OpenApiParameter('replies', description='Whether to include reply speeches', required=False, type=bool, default=False),
+    OpenApiParameter('substantive', description='Whether to include substantive speeches', required=False, type=bool, default=True),
+    OpenApiParameter('ghost', description='Include ghost (iron-person) scores', required=False, type=bool, default=False),
+])
+@extend_schema_view(
+    list=extend_schema(summary="Get speaker scores per round", responses=serializers.SpeakerRoundScoresSerializer(many=True)),
+)
+class SpeakerRoundStandingsRoundsView(TournamentAPIMixin, TournamentPublicAPIMixin, ModelViewSet):
+    serializer_class = serializers.SpeakerRoundScoresSerializer
+    tournament_field = "team__tournament"
+    access_preference = 'speaker_tab_released'
+
+    def get_queryset(self):
+        qs = super().get_queryset().prefetch_related(Prefetch('team__debateteam_set', queryset=DebateTeam.objects.all().select_related('debate__round__tournament')))
+        data = {s.id: s for s in qs.all()}
+
+        speaker_scores = SpeakerScore.objects.select_related('speaker', 'ballot_submission',
+            'debate_team__debate__round__tournament').filter(
+            ballot_submission__confirmed=True, speaker_id__in=data.keys(),
+        ).order_by('speaker_id', 'debate_team_id', 'position')
+
+        if self.request.query_params.get('ghost', False) == 'true':
+            speaker_scores = speaker_scores.filter(ghost=True)
+        if self.request.query_params.get('replies', False) == 'true':
+            speaker_scores = speaker_scores.filter(position=self.tournament.reply_position)
+        elif self.request.query_params.get('substantive', 'true') == 'true':
+            speaker_scores = speaker_scores.filter(position__lte=self.tournament.last_substantive_position)
+
+        for spk in data.values():
+            spk.debateteams = deepcopy(spk.team.debateteam_set.all())
+            for dt in spk.debateteams:
+                dt.scores = []
+
+        for speaker, all_scores in groupby(speaker_scores, key=lambda ss: ss.speaker_id):
+            speaker_rounds = {dt.id: dt for dt in data[speaker].debateteams}
+            for dt, round_scores in groupby(all_scores, key=lambda ss: ss.debate_team_id):
+                speaker_rounds[dt].scores.extend(list(round_scores))
+
+        return data.values()
+
+
+@extend_schema(tags=['standings'], parameters=[
+    tournament_parameter,
+])
+@extend_schema_view(
+    list=extend_schema(summary="Get team scores per round", responses=serializers.TeamRoundScoresSerializer(many=True)),
+)
+class TeamRoundStandingsRoundsView(TournamentAPIMixin, TournamentPublicAPIMixin, ModelViewSet):
+    serializer_class = serializers.TeamRoundScoresSerializer
+    access_preference = 'team_tab_released'
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+    def get_queryset(self):
+        ts_pf = Prefetch('teamscore_set', queryset=TeamScore.objects.filter(ballot_submission__confirmed=True), to_attr='round_scores')
+        qs = super().get_queryset().prefetch_related(
+            Prefetch('debateteam_set', queryset=DebateTeam.objects.all().prefetch_related(ts_pf).select_related('debate__round__tournament')))
+
+        for t in qs:
+            for dt in t.debateteam_set.all():
+                if len(dt.round_scores):
+                    # There should only ever be one confirmed score
+                    dt.ballot = dt.round_scores[0]
+                else:
+                    dt.ballot = TeamScore()
+
+        return qs
+
+
 @extend_schema(tags=['debates'], parameters=round_parameters)
 @extend_schema_view(
     list=extend_schema(summary="List pairings in round"),
@@ -796,7 +871,7 @@ class FeedbackQuestionViewSet(TournamentAPIMixin, PublicAPIMixin, ModelViewSet):
     list=extend_schema(summary="List all tournament feedback", parameters=[
         OpenApiParameter('source_type', description='The type of participant submitter of the feedback', required=False, type=str, enum=['adjudicator', 'team']),
         OpenApiParameter('source', description='The ID of the participant submitting feedback; must be used in conjunction with `source_type`', required=False, type=int),
-        OpenApiParameter('round', description='The sequence of the round of the submitted feedback', required=False, type=int),
+        OpenApiParameter('round', description='The sequence of the rounds of the submitted feedback', required=False, type={"type": "array", "items": {"type": "integer"}}, explode=False),
         OpenApiParameter('target', description='The ID of the adjudicator receiving feedback', required=False, type=int),
     ]),
     create=extend_schema(summary="Create feedback"),
@@ -824,7 +899,7 @@ class FeedbackViewSet(TournamentAPIMixin, AdministratorAPIMixin, ModelViewSet):
             if query_params.get('source'):
                 filters &= Q(source_team__team_id=query_params.get('source'))
         if query_params.get('round'):
-            filters &= (Q(source_adjudicator__debate__round__seq=query_params.get('round')) |
+            filters &= (Q(source_adjudicator__debate__round__seq__in=query_params.get('round').split(",")) |
                 Q(source_team__debate__round__seq=query_params.get('round')))
         if query_params.get('target'):
             filters &= Q(adjudicator_id=query_params.get('target'))
